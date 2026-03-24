@@ -198,11 +198,17 @@ server <- function(input, output, session) {
         linewidth = 1.2,
         color = "#A90533"
       ) +
-      geom_vline(
-        xintercept = c(lb, ub),
-        linetype = c("dashed", "dashed"),
-        color = c("#F04E2A", "#F04E2A"),
-        linewidth = c(0.9, 0.9)
+      geom_segment(
+        aes(x = lb, xend = lb, y = 0, yend = y_peak * 0.95),
+        linetype = "dashed",
+        color = "#F04E2A",
+      linewidth = 0.9
+      ) +
+      geom_segment(
+        aes(x = ub, xend = ub, y = 0, yend = y_peak * 0.95),
+        linetype = "dashed",
+        color = "#F04E2A",
+        linewidth = 0.9
       ) +
       annotate(
         "text",
