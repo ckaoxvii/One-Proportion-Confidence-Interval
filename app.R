@@ -22,11 +22,16 @@ ui <- page_sidebar(
     "))
   ),
   sidebar = sidebar(
-    numericInput(
-      "sample_prop",
-      "Sample Proportion:",
-      value = 0.5
+    radioButtons(
+      'input_type',
+      'Input Type',
+      choices = c(
+        'Sample Proportion' = 'prop',
+        'Number of Successes' = 'count'
+      ),
+      selected = 'prop'
     ),
+    uiOutput('sample_input'),
     numericInput(
       'sample_size',
       "Sample Size:",
@@ -40,6 +45,7 @@ ui <- page_sidebar(
   ),
   
   card(
+    full_screen = TRUE,
     card_header("Results"),
     card_body(
       h4('Estimate of Population Proportion'),
@@ -52,79 +58,83 @@ ui <- page_sidebar(
 )
 
 server <- function(input, output, session) {
+
+  output$sample_input <- renderUI({
+    if (input$input_type == "prop") {
+      numericInput(
+        "sample_prop",
+        "Sample Proportion:",
+        value = 0.5,
+        min = 0,
+        max = 1,
+        step = 0.01
+      )
+    } else {
+      numericInput(
+        "successes",
+        "Number of Successes:",
+        value = 50,
+        min = 0,
+        step = 1
+      )
+    }
+  })
+
+  p_hat <- reactive({
+    if (input$input_type == 'prop') {
+      req(input$sample_prop)
+      validate(
+        need(
+          input$sample_prop >= 0 && input$sample_prop <= 1,
+          'Sample proportion must be between 0 and 1.'
+        )
+      )
+      input$sample_prop
+    } else {
+      req(input$successes)
+      validate(
+        need(input$successes >= 0, 'Number of successes must be nonnegative.'),
+        need(input$successes <= input$sample_size, 'Number of successes cannot exceed the sample size')
+      )
+      input$successes/input$sample_size
+    }
+  })
   
   # calculate standard error
   standard_error <- reactive({
-    p_hat = input$sample_prop
-    n = input$sample_size
-    se = sqrt(p_hat * (1 - p_hat) / n)
-
-    return(se)
+    req(p_hat(), input$sample_size)
+    sqrt(p_hat() * (1 - p_hat()) / input$sample_size)
   })
 
   # calculate margin of error
   margin_of_error <- reactive({
-    se = standard_error()
-    alpha = 1 - input$conf_level/100
-    z_critical = qnorm(1 - alpha/2)
-    margin_of_error = z_critical*se
-
-    return(margin_of_error)
+    req(input$conf_level)
+    alpha = 1 - input$conf_level / 100
+    z_critical = qnorm(1 - alpha / 2)
+    z_critical * standard_error()
   })
 
   # calculate CI lower bound
   lower_bound <- reactive({
-    lower_bound <- input$sample_prop - margin_of_error()
-
-    return(lower_bound)
+    max(0, p_hat() - margin_of_error())
   })
 
   # calculate CI upper bound
   upper_bound <- reactive({
-    upper_bound <- input$sample_prop + margin_of_error()
-
-    return(upper_bound)
+    min(1, p_hat() + margin_of_error())
   })
   
   # calculate confidence interval
   confidence_interval <- reactive({
-    p_hat <- input$sample_prop
-    
-    # Calculate confidence interval bounds
-    lower_bound <- p_hat - margin_of_error()
-    upper_bound <- p_hat + margin_of_error()
-    
-    # Ensure bounds are within [0, 1]
-    lower_bound <- max(0, lower_bound)
-    upper_bound <- min(1, upper_bound)
-    
-    return(c(lower_bound, upper_bound))
+    c(lower_bound(), upper_bound())
   })
   
-  # output standard error
-  output$standard_error <- renderText({
-    se <- standard_error()
-    paste0("SE = ", round(se, 6))
-  })
-
-  # output margin of error
-  output$margin_of_error <- renderText({
-    margin_of_error <- margin_of_error()
-  })
-  
-  # output confidence interval
-  output$confidence_interval <- renderText({
-    ci <- confidence_interval()
-    conf_level <- input$conf_level
-    paste0(conf_level, "% CI: (", round(ci[1], 4), ", ", round(ci[2], 4), ")")
-  })
-
   output$table_1 <- renderReactable({
     reactable(
       tibble(
-        point_estimate = sprintf('%.4f', round(input$sample_prop, 4)),
-        standard_error = sprintf('%.4f', round(standard_error(), 4)),
-        margin_of_error = sprintf('%.4f', round(margin_of_error(), digits = 4))
+        point_estimate = sprintf('%.4f', p_hat()),
+        standard_error = sprintf('%.4f', standard_error()),
+        margin_of_error = sprintf('%.4f', margin_of_error())
       ),
       defaultColDef = colDef(
         align = 'right'
@@ -141,8 +151,8 @@ server <- function(input, output, session) {
     reactable(
       tibble(
         conf_level = paste0(input$conf_level, '%'),
-        lower_bd = sprintf('%.4f', round(lower_bound(), 4)),
-        upper_bd = sprintf('%.4f', round(upper_bound(), 4)),
+        lower_bd = sprintf('%.4f', lower_bound()),
+        upper_bd = sprintf('%.4f', upper_bound()),
       ),
       defaultColDef = colDef(
         align = 'right'
@@ -157,10 +167,13 @@ server <- function(input, output, session) {
 
   # output interpretation
   output$interpretation <- renderText({
-    conf_level <- input$conf_level
     ci <- confidence_interval()
-    paste0("We are ", conf_level, "% confident that the true population proportion ",
-           "lies between ", round(ci[1], 4)*100, "%", " and ", round(ci[2], 4)*100, "%", ".")
+    paste0(
+      "We are ", input$conf_level,
+      "% confident that the true population proportion lies between ",
+      round(ci[1] * 100, 2), "% and ",
+      round(ci[2] * 100, 2), "%."
+    )
   })
 }
 
