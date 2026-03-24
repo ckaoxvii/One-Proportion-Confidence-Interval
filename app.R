@@ -52,7 +52,10 @@ ui <- page_sidebar(
       reactableOutput('table_1'),
       br(),
       h4('Confidence Interval'),
-      reactableOutput('table_2')
+      reactableOutput('table_2'),
+      br(),
+      h4('Confidence Interval Plot'),
+      plotOutput("ci_curve_plot", height = "400px")
     )
   )
 )
@@ -165,6 +168,111 @@ server <- function(input, output, session) {
     )
   })
 
+   output$ci_curve_plot <- renderPlot({
+    req(p_hat(), standard_error(), lower_bound(), upper_bound(), input$conf_level)
+
+    mu <- p_hat()
+    se <- standard_error()
+    lb <- lower_bound()
+    ub <- upper_bound()
+
+    x_min <- max(0, mu - 4 * se)
+    x_max <- min(1, mu + 4 * se)
+
+    curve_df <- tibble(
+      x = seq(x_min, x_max, length.out = 1000),
+      y = dnorm(x, mean = mu, sd = se)
+    )
+
+    shade_df <- curve_df |> filter(x >= lb, x <= ub)
+
+    y_peak <- max(curve_df$y)
+
+    ggplot(curve_df, aes(x = x, y = y)) +
+      geom_area(
+        data = shade_df,
+        fill = "#F04E2A",
+        alpha = 0.25
+      ) +
+      geom_line(
+        linewidth = 1.2,
+        color = "#A90533"
+      ) +
+      geom_vline(
+        xintercept = c(lb, ub),
+        linetype = c("dashed", "dashed"),
+        color = c("#F04E2A", "#F04E2A"),
+        linewidth = c(0.9, 0.9)
+      ) +
+      annotate(
+        "text",
+        x = mu,
+        y = y_peak * 1.175,
+        label = paste0(input$conf_level, "% Confidence Interval"),
+        size = 5
+      ) +
+      annotate(
+        "text",
+        x = mu,
+        y = y_peak * 1.1,
+        label = paste0(
+          "[",
+          sprintf("%.4f", lb),
+          ", ",
+          sprintf("%.4f", ub),
+          "]"
+        ),
+        color = "#A90533",
+        size = 5
+      ) +
+      annotate(
+        "text",
+        x = lb,
+        y = -0.02 * y_peak,
+        label = paste0("Lower\n", sprintf("%.4f", lb)),
+        color = "#F04E2A",
+        vjust = 1,
+        hjust = 1.25,
+        size = 5
+      ) +
+      annotate(
+        "text",
+        x = mu,
+        y = -0.02 * y_peak,
+        label = paste0("p̂\n", sprintf("%.4f", mu)),
+        color = "#A90533",
+        vjust = 1,
+        size = 5
+      ) +
+      annotate(
+        "text",
+        x = ub,
+        y = -0.02 * y_peak,
+        label = paste0("Upper\n", sprintf("%.4f", ub)),
+        color = "#F04E2A",
+        vjust = 1,
+        hjust = -0.25,
+        size = 5
+      ) +
+      scale_x_continuous(
+        limits = c(0, 1),
+        breaks = seq(0, 1, by = 0.1)
+      ) +
+      labs(
+        x = "Population Proportion p"
+      ) +
+      coord_cartesian(ylim = c(-0.08 * y_peak, 1.18 * y_peak)) +
+      theme_minimal(base_size = 13) +
+      theme(
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank(),
+        plot.title = element_text(face = "bold"),
+        axis.title = element_text(face = "bold"),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank()
+      )
+  })
+
   # output interpretation
   output$interpretation <- renderText({
     ci <- confidence_interval()
@@ -175,6 +283,7 @@ server <- function(input, output, session) {
       round(ci[2] * 100, 2), "%."
     )
   })
+
 }
 
 shinyApp(ui = ui, server = server)
