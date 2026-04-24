@@ -5,6 +5,7 @@ library(tidyverse)
 
 ui <- page_sidebar(
   title = "One-Proportion Confidence Interval Calculator",
+  window_title = "One-Proportion CI Calculator",
   theme = bs_theme(
     primary = "#A90533",
     "navbar-bg" = "#A90533",
